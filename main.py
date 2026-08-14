@@ -1,8 +1,26 @@
-# Re-launch --zluda runs under the ZLUDA venv interpreter when the current one
-# can't provide it. The ZLUDA shims load the HIP runtime from %HIP_PATH%\bin,
-# so that directory is put on PATH before torch imports its CUDA DLLs.
+# Re-launch a --zluda / --directml run under its own venv interpreter when the
+# current one can't provide it. ZLUDA's shims load the HIP runtime from
+# %HIP_PATH%\bin, so that directory is put on PATH before torch imports.
 import os as _os
 import sys as _sys
+
+
+def _relaunch(_venv_dir):
+    _target = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), _venv_dir, "Scripts", "python.exe")
+    if _os.path.exists(_target) and _os.path.abspath(_sys.executable).lower() != _os.path.abspath(_target).lower():
+        _os.execv(_target, [_target] + _sys.argv)
+
+
+if "--zluda" not in _sys.argv and "--directml" not in _sys.argv:
+    try:
+        while True:
+            _choice = input("No backend specified - type 'zluda' or 'directml': ").strip().lower()
+            if _choice in ("zluda", "directml"):
+                _sys.argv.insert(1, "--" + _choice)
+                break
+            print("Unknown backend '{}' - type 'zluda' or 'directml'.".format(_choice))
+    except EOFError:
+        pass
 
 if "--zluda" in _sys.argv:
     _hip_path = _os.environ.get("HIP_PATH", "").strip("\\")
@@ -10,9 +28,9 @@ if "--zluda" in _sys.argv:
         _hip_bin = _os.path.join(_hip_path, "bin")
         if _hip_bin.lower() not in _os.environ.get("Path", "").lower():
             _os.environ["Path"] = _hip_bin + ";" + _os.environ.get("Path", "")
-    _zluda_python = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".venv-zluda", "Scripts", "python.exe")
-    if _os.path.exists(_zluda_python) and _os.path.abspath(_sys.executable).lower() != _os.path.abspath(_zluda_python).lower():
-        _os.execv(_zluda_python, [_zluda_python] + _sys.argv)
+    _relaunch(".venv-zluda")
+elif "--directml" in _sys.argv:
+    _relaunch(".venv")
 
 import comfy.options
 comfy.options.enable_args_parsing()
