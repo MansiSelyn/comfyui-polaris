@@ -73,7 +73,7 @@ Put your models in `models\checkpoints` (Stable Diffusion checkpoints) and
 `models\vae`, then start one of:
 
 ```powershell
-.\.venv\Scripts\python.exe main.py --directml 0 --cpu-vae
+.\.venv\Scripts\python.exe main.py --directml
 ```
 
 or, for the faster ZLUDA backend:
@@ -87,9 +87,9 @@ browser and build a workflow.
 
 Notes for typical usage:
 
-- Keep the `--cpu-vae` flag when using DirectML: it moves the image
-  encode/decode step to the CPU, which avoids a graphics-memory bug on Polaris.
-  Sampling still runs on the GPU.
+- If the VAE errors with an out-of-memory message, add `--cpu-vae`: it moves the
+  image encode/decode step to the CPU (sampling still runs on the GPU), which
+  avoids a graphics-memory bug on Polaris.
 - If you run out of graphics memory, add `--lowvram`.
 - SD 1.5-class models work well. Some very new model families require NVIDIA-only
   libraries and will show a clear error instead of working.
