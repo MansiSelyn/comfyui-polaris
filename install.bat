@@ -33,6 +33,42 @@ if not defined PYEXE (
 echo Using interpreter: %PYEXE%
 echo.
 
+echo [0/4] Folder structure
+rem ---- runtime folders (a fresh clone ships none) ----
+for %%D in (input output user temp custom_nodes blueprints) do if not exist "%%D" mkdir "%%D"
+for %%D in (audio_encoders background_removal checkpoints clip clip_vision configs controlnet detection diffusers diffusion_models embeddings frame_interpolation geometry_estimation gligen hypernetworks latent_upscale_models loras model_patches optical_flow photomaker style_models text_encoders unet upscale_models vae vae_approx) do if not exist "models\%%D" mkdir "models\%%D"
+rem ---- placeholder files (keep the folders visible in the UI) ----
+for %%F in (
+    "blueprints\put_blueprints_here"
+    "models\audio_encoders\put_audio_encoder_models_here"
+    "models\background_removal\put_background_removal_models_here"
+    "models\checkpoints\put_checkpoints_here"
+    "models\clip\put_clip_or_text_encoder_models_here"
+    "models\clip_vision\put_clip_vision_models_here"
+    "models\controlnet\put_controlnets_and_t2i_here"
+    "models\detection\put_detection_models_here"
+    "models\diffusers\put_diffusers_models_here"
+    "models\diffusion_models\put_diffusion_model_files_here"
+    "models\embeddings\put_embeddings_or_textual_inversion_concepts_here"
+    "models\frame_interpolation\put_frame_interpolation_models_here"
+    "models\geometry_estimation\put_geometry_estimation_models_here"
+    "models\gligen\put_gligen_models_here"
+    "models\hypernetworks\put_hypernetworks_here"
+    "models\latent_upscale_models\put_latent_upscale_models_here"
+    "models\loras\put_loras_here"
+    "models\model_patches\put_model_patches_here"
+    "models\optical_flow\put_optical_flow_models_here"
+    "models\photomaker\put_photomaker_models_here"
+    "models\style_models\put_t2i_style_model_here"
+    "models\text_encoders\put_text_encoder_files_here"
+    "models\unet\put_unet_files_here"
+    "models\upscale_models\put_esrgan_and_other_upscale_models_here"
+    "models\vae\put_vae_here"
+    "models\vae_approx\put_taesd_encoder_pth_and_taesd_decoder_pth_here"
+    "output\_output_images_will_be_put_here"
+) do if not exist "%%~F" type nul > "%%~F"
+echo.
+
 echo [1/4] DirectML venv (.venv) - primary Polaris backend
 if not exist ".venv\Scripts\python.exe" (
     %PYEXE% -m venv .venv
