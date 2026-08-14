@@ -73,7 +73,7 @@ Put your models in `models\checkpoints` (Stable Diffusion checkpoints) and
 `models\vae`, then start one of:
 
 ```powershell
-.\.venv\Scripts\python.exe main.py --directml
+python main.py --directml
 ```
 
 or, for the faster ZLUDA backend:
