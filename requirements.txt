@@ -1,0 +1,140 @@
+# ComfyUI Polaris - merged dependency manifest.
+#
+# The DirectML and ZLUDA stacks cannot share one Python environment (a CUDA
+# torch and torch-directml are different builds of the same package), so do NOT
+# run `pip install -r requirements.txt` directly - it would try to install both.
+# Run install.bat instead: it creates two venvs and installs the matching
+# section into each, then downloads and deploys the ZLUDA runtime.
+#
+#   DIRECTML - installs into .venv       (primary Polaris backend)
+#   ZLUDA    - installs into .venv-zluda (optional backend)
+#   MANAGER  - installs into .venv       (ComfyUI-Manager)
+#
+# Each section keeps its own full list so it works as a standalone file too.
+# Needs Python 3.8-3.12 (torch-directml does not support 3.13+).
+
+# ============================================================
+# ==== DIRECTML ====
+# ============================================================
+# Dependencies for running ComfyUI on AMD Polaris (gfx803, RX 4xx/5xx) via DirectML.
+#   - torch-directml is the only PyTorch GPU backend that works on Polaris (Windows).
+#     It is pinned to torch==2.4.1 / torchvision==0.19.1 (the newest it supports).
+#   - comfy-kitchen is excluded: it is a CUDA/ROCm kernel library and its current
+#     release cannot even import on torch 2.4.1.
+#   - comfy-aimdo is kept: it imports fine on torch 2.4.1 and disables itself
+#     automatically on DirectML (legacy ModelPatcher is used instead).
+
+torch-directml
+torch==2.4.1
+torchvision==0.19.1
+torchaudio==2.4.1
+torchsde
+numpy>=1.25.0
+einops
+transformers>=4.50.3,<5
+tokenizers>=0.13.3
+sentencepiece
+safetensors>=0.4.2
+aiohttp>=3.11.8
+yarl>=1.18.0
+pyyaml
+Pillow
+scipy
+tqdm
+psutil
+alembic
+SQLAlchemy>=2.0.0
+filelock
+av>=16.0.0
+comfy-aimdo==0.4.13
+requests
+simpleeval>=1.0.0
+blake3
+
+#frontend:
+comfyui-frontend-package==1.49.6
+comfyui-workflow-templates==0.11.41
+comfyui-embedded-docs==0.5.9
+
+#non essential dependencies:
+kornia>=0.7.1
+spandrel
+pydantic~=2.0
+pydantic-settings~=2.0
+PyOpenGL>=3.1.8
+comfy-angle
+
+# ============================================================
+# ==== ZLUDA ====
+# ============================================================
+# Dependencies for running ComfyUI on AMD Polaris (gfx803, RX 4xx/5xx) via ZLUDA.
+# ZLUDA exposes the HIP/ROCm runtime (HIP SDK 5.7 + the gfx803 ROCmLibs rocBLAS
+# pack, downloaded and deployed by install.bat) through CUDA DLL shims, so torch
+# here is a normal CUDA build. Install it in its OWN venv (install.bat uses
+# .venv-zluda): a CUDA torch and torch-directml are different builds of the same
+# package and cannot share one environment.
+#
+# torch 2.4.1+cu118 is required by this fork (comfy/utils.py uses
+# torch.serialization.add_safe_globals, added in torch 2.4.0) and matches the
+# DirectML venv's torch version. It also still ships the cu118 DLL names
+# (cublas64_11.dll / cusparse64_11.dll / nvrtc64_112_0.dll) that the ZLUDA 3.9.5
+# windows-rocm5 shims replace. Newer torch drops cu118 builds.
+#
+# ZLUDA prerequisites outside this file:
+#   - HIP SDK 5.7.1 installed with HIP_PATH set (used by the ZLUDA DLLs).
+#   - The gfx803 ROCmLibs rocBLAS pack (rocblas.dll + library/ from the
+#     downloaded alup-gfx803 archive) placed in %HIP_PATH%\bin so rocBLAS has
+#     Polaris kernels.
+#   - The ZLUDA windows-rocm5 DLLs dropped into the venv's torch\lib so torch
+#     loads the CUDA shims instead of the real NVIDIA DLLs.
+#     install.bat downloads both archives and does all three; it skips the ZLUDA
+#     deployment (with a warning) when a download fails or HIP_PATH is unset.
+#
+# Do NOT add torch-directml here. comfy-kitchen is intentionally left out (its
+# import is guarded in the fork). The DirectML stack lives in the DIRECTML section.
+
+--extra-index-url https://download.pytorch.org/whl/cu118
+
+torch==2.4.1+cu118
+torchvision==0.19.1+cu118
+torchaudio==2.4.1+cu118
+torchsde
+numpy==1.26.4
+einops
+transformers==4.51.3
+tokenizers>=0.13.3
+sentencepiece
+safetensors==0.5.3
+aiohttp>=3.11.8
+yarl>=1.18.0
+pyyaml
+Pillow
+scipy
+tqdm
+psutil
+alembic
+SQLAlchemy>=2.0.0
+filelock
+av>=16.0.0
+comfy-aimdo==0.4.13
+requests
+simpleeval>=1.0.0
+blake3
+
+#frontend:
+comfyui-frontend-package==1.49.6
+comfyui-workflow-templates==0.11.41
+comfyui-embedded-docs==0.5.9
+
+#non essential dependencies:
+kornia>=0.7.1
+spandrel
+pydantic~=2.0
+pydantic-settings~=2.0
+PyOpenGL>=3.1.8
+comfy-angle
+
+# ============================================================
+# ==== MANAGER ====
+# ============================================================
+comfyui_manager==4.2.2
