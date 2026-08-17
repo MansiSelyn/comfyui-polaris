@@ -196,6 +196,64 @@ def apply_custom_paths():
         logging.info(f"Setting user directory to: {user_dir}")
         folder_paths.set_user_directory(user_dir)
 
+    _discover_sibling_model_folders()
+
+
+def _discover_sibling_model_folders():
+    """Scan the parent directory for sibling ComfyUI installations and add their
+    model folders as extra search paths.  Also scans one level deeper (e.g. a
+    ``test/`` wrapper) to catch installations nested inside subdirectories.
+    Skips polaris-experimental itself and any directory that doesn't contain a
+    ``models/`` tree with at least one recognised model sub-folder."""
+    own_root = os.path.dirname(os.path.realpath(__file__))
+    parent = os.path.dirname(own_root)
+    if not os.path.isdir(parent):
+        return
+
+    model_subdirs = set(folder_paths.folder_names_and_paths.keys())
+    found = 0
+    seen = {os.path.realpath(own_root)}
+    candidates = []
+
+    for entry in os.scandir(parent):
+        if not entry.is_dir(follow_symlinks=True):
+            continue
+        candidate = os.path.realpath(entry.path)
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        candidates.append(candidate)
+
+    for base in list(candidates):
+        for entry in os.scandir(base):
+            if entry.is_dir(follow_symlinks=True):
+                deeper = os.path.realpath(entry.path)
+                if deeper not in seen and deeper != os.path.realpath(own_root):
+                    seen.add(deeper)
+                    candidates.append(deeper)
+
+    for candidate in candidates:
+        models_dir = os.path.join(candidate, "models")
+        if not os.path.isdir(models_dir):
+            continue
+        has_models = False
+        for sub in os.scandir(models_dir):
+            if sub.is_dir() and sub.name in model_subdirs:
+                has_models = True
+                break
+        if not has_models:
+            continue
+
+        found += 1
+        label = os.path.relpath(candidate, parent)
+        logging.info(f"[polaris] Discovered sibling ComfyUI: {label} ({candidate})")
+        for sub in os.scandir(models_dir):
+            if sub.is_dir() and sub.name in model_subdirs:
+                folder_paths.add_model_folder_path(sub.name, sub.path)
+
+    if found:
+        logging.info(f"[polaris] Added model paths from {found} sibling installation(s).")
+
 
 def execute_prestartup_script():
     if args.disable_all_custom_nodes and len(args.whitelist_custom_nodes) == 0:

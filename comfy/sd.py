@@ -490,6 +490,8 @@ class VAE:
 
         if model_management.is_amd():
             VAE_KL_MEM_RATIO = 2.73
+        elif getattr(model_management, '_POLARIS_ACTIVE', False):
+            VAE_KL_MEM_RATIO = 2.73
         else:
             VAE_KL_MEM_RATIO = 1.0
 

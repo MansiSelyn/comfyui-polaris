@@ -174,6 +174,38 @@ if args.zluda:
     else:
         logging.error("--zluda was requested, but torch.cuda.is_available() is False (torch {}). ZLUDA needs a CUDA-enabled torch with the ZLUDA DLLs on the load path; run install.bat (ZLUDA section, .venv-zluda).".format(torch.__version__))
         raise SystemExit(1)
+
+# ── Polaris experimental fixes ──────────────────────────────────────────────
+# Under ZLUDA, is_amd() is False (torch.version.hip is None) so all AMD-specific
+# code paths are unreachable.  Detect Polaris hardware directly via gcnArchName
+# and apply the missing fixes: SDPA attention, cuBLASLt, VRAM budgeting.
+_POLARIS_ACTIVE = False
+try:
+    _zluda_arch = ""
+    if torch.cuda.is_available():
+        _props = torch.cuda.get_device_properties(torch.cuda.current_device())
+        _zluda_arch = getattr(_props, "gcnArchName", "").split(":")[0].strip().lower()
+    if any(_zluda_arch.startswith(a) for a in ("gfx800", "gfx801", "gfx802", "gfx803", "gfx804", "gfx805", "gfx806")):
+        _POLARIS_ACTIVE = True
+        logging.info("[polaris] Detected gfx803 Polaris under ZLUDA, applying experimental fixes.")
+except Exception:
+    pass
+
+if _POLARIS_ACTIVE:
+    # cuBLASLt: already disabled by DISABLE_ADDMM_CUDA_LT=1 above.  Enable FP16
+    # reduction so matmuls use Polaris's 2:1 packed FP16 math.
+    try:
+        torch.backends.cuda.matmul.allow_fp16_reduction = True
+    except Exception:
+        pass
+    # cuDNN: force-disable TF32 so convolutions don't try non-existent paths.
+    try:
+        torch.backends.cuda.matmul.allow_tf32 = False
+        torch.backends.cudnn.allow_tf32 = False
+    except Exception:
+        pass
+    logging.info("[polaris] cuBLASLt bypassed (legacy cublas), TF32 disabled, FP16 reduction enabled.")
+
 elif args.directml is not None:
     try:
         import torch_directml
@@ -607,6 +639,8 @@ def amd_min_version(device=None, min_rdna_version=0):
 MIN_WEIGHT_MEMORY_RATIO = 0.4
 if is_nvidia():
     MIN_WEIGHT_MEMORY_RATIO = 0.0
+if _POLARIS_ACTIVE:
+    MIN_WEIGHT_MEMORY_RATIO = 0.3
 
 ENABLE_PYTORCH_ATTENTION = False
 if args.use_pytorch_cross_attention:
@@ -623,6 +657,9 @@ try:
             ENABLE_PYTORCH_ATTENTION = True
 except:
     pass
+
+if _POLARIS_ACTIVE:
+    ENABLE_PYTORCH_ATTENTION = True
 
 
 SUPPORT_FP8_OPS = args.supports_fp8_compute
@@ -1872,6 +1909,8 @@ def pytorch_attention_enabled():
 def pytorch_attention_enabled_vae():
     if is_amd():
         return False  # enabling pytorch attention on AMD currently causes crash when doing high res
+    if _POLARIS_ACTIVE:
+        return True
     return pytorch_attention_enabled()
 
 def pytorch_attention_flash_attention():
@@ -2091,6 +2130,9 @@ def should_use_bf16(device=None, model_params=0, prioritize_performance=True, ma
             if manual_cast:
                 return True
             return False
+
+    if _POLARIS_ACTIVE:
+        return False
 
     props = torch.cuda.get_device_properties(device)
 

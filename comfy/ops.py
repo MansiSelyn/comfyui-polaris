@@ -65,34 +65,53 @@ try:
     if torch.cuda.is_available():
         from torch.nn.attention import SDPBackend, sdpa_kernel
         if "set_priority" in inspect.signature(sdpa_kernel).parameters:
-            SDPA_BACKEND_PRIORITY = [
-                SDPBackend.FLASH_ATTENTION,
-                SDPBackend.CUDNN_ATTENTION,
-                SDPBackend.EFFICIENT_ATTENTION,
-                SDPBackend.MATH,
-            ]
+            _is_polaris = False
+            try:
+                _props = torch.cuda.get_device_properties(torch.cuda.current_device())
+                _arch = getattr(_props, "gcnArchName", "").split(":")[0].strip().lower()
+                _is_polaris = any(_arch.startswith(a) for a in ("gfx800", "gfx801", "gfx802", "gfx803", "gfx804", "gfx805", "gfx806"))
+            except Exception:
+                pass
 
-            def scaled_dot_product_attention(q, k, v, *args, **kwargs):
-                if q.nelement() < 1024 * 128:  # arbitrary number, for small inputs cudnn attention seems slower
-                    return torch.nn.functional.scaled_dot_product_attention(q, k, v, *args, **kwargs)
-                attn_mask = args[0] if len(args) > 0 else kwargs.get("attn_mask")
-                if kwargs.get("enable_gqa", False) and attn_mask is not None and not comfy.model_management.is_nvidia():
-                    k, v = repeat_kv_for_gqa(k, v, q.shape[-3], -3)
-                    kwargs["enable_gqa"] = False
-                with sdpa_kernel(SDPA_BACKEND_PRIORITY, set_priority=True):
-                    if kwargs.get("enable_gqa", False) and attn_mask is not None and q.shape[-3] != k.shape[-3]:
-                        dropout_p = args[1] if len(args) > 1 else kwargs.get("dropout_p", 0.0)
-                        is_causal = args[2] if len(args) > 2 else kwargs.get("is_causal", False)
-                        params = torch.backends.cuda.SDPAParams(q, k, v, attn_mask, dropout_p, is_causal, True)
-                        supports_native_gqa = (
-                            torch.backends.cuda.can_use_flash_attention(params)
-                            or torch.backends.cuda.can_use_cudnn_attention(params)
-                            or torch.backends.cuda.can_use_efficient_attention(params)
-                        )
-                        if not supports_native_gqa:
-                            k, v = repeat_kv_for_gqa(k, v, q.shape[-3], -3)
-                            kwargs["enable_gqa"] = False
-                    return torch.nn.functional.scaled_dot_product_attention(q, k, v, *args, **kwargs)
+            if _is_polaris:
+                SDPA_BACKEND_PRIORITY = [SDPBackend.MATH]
+
+                def scaled_dot_product_attention(q, k, v, *args, **kwargs):
+                    attn_mask = args[0] if len(args) > 0 else kwargs.get("attn_mask")
+                    if kwargs.get("enable_gqa", False) and attn_mask is not None:
+                        k, v = repeat_kv_for_gqa(k, v, q.shape[-3], -3)
+                        kwargs["enable_gqa"] = False
+                    with sdpa_kernel(SDPA_BACKEND_PRIORITY):
+                        return torch.nn.functional.scaled_dot_product_attention(q, k, v, *args, **kwargs)
+            else:
+                SDPA_BACKEND_PRIORITY = [
+                    SDPBackend.FLASH_ATTENTION,
+                    SDPBackend.CUDNN_ATTENTION,
+                    SDPBackend.EFFICIENT_ATTENTION,
+                    SDPBackend.MATH,
+                ]
+
+                def scaled_dot_product_attention(q, k, v, *args, **kwargs):
+                    if q.nelement() < 1024 * 128:  # arbitrary number, for small inputs cudnn attention seems slower
+                        return torch.nn.functional.scaled_dot_product_attention(q, k, v, *args, **kwargs)
+                    attn_mask = args[0] if len(args) > 0 else kwargs.get("attn_mask")
+                    if kwargs.get("enable_gqa", False) and attn_mask is not None and not comfy.model_management.is_nvidia():
+                        k, v = repeat_kv_for_gqa(k, v, q.shape[-3], -3)
+                        kwargs["enable_gqa"] = False
+                    with sdpa_kernel(SDPA_BACKEND_PRIORITY, set_priority=True):
+                        if kwargs.get("enable_gqa", False) and attn_mask is not None and q.shape[-3] != k.shape[-3]:
+                            dropout_p = args[1] if len(args) > 1 else kwargs.get("dropout_p", 0.0)
+                            is_causal = args[2] if len(args) > 2 else kwargs.get("is_causal", False)
+                            params = torch.backends.cuda.SDPAParams(q, k, v, attn_mask, dropout_p, is_causal, True)
+                            supports_native_gqa = (
+                                torch.backends.cuda.can_use_flash_attention(params)
+                                or torch.backends.cuda.can_use_cudnn_attention(params)
+                                or torch.backends.cuda.can_use_efficient_attention(params)
+                            )
+                            if not supports_native_gqa:
+                                k, v = repeat_kv_for_gqa(k, v, q.shape[-3], -3)
+                                kwargs["enable_gqa"] = False
+                        return torch.nn.functional.scaled_dot_product_attention(q, k, v, *args, **kwargs)
         else:
             logging.warning("Torch version too old to set sdpa backend priority.")
 except (ModuleNotFoundError, TypeError):
