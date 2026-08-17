@@ -49,6 +49,9 @@ try:
     # older Triton lacks libdevice.rint on the HIP backend and hard-crashes the INT8 path.
     if args.disable_triton_backend:
         ck.registry.disable("triton")
+    elif getattr(comfy.model_management, '_POLARIS_ACTIVE', False):
+        logging.info("[polaris] Triton backend disabled — Polaris (gfx803) lacks WMMA, INT8 tl.dot would hang GPU.")
+        ck.registry.disable("triton")
     elif args.enable_triton_backend: # or (torch.version.hip is not None and _rocm_kitchen_arch_supported()):
         try:
             import triton

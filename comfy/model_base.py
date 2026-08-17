@@ -184,8 +184,8 @@ class BaseModel(torch.nn.Module):
                 logging.debug("using channels last mode for diffusion model")
             if getattr(comfy.model_management, '_POLARIS_ACTIVE', False):
                 try:
-                    self.diffusion_model = torch.compile(self.diffusion_model, mode="reduce-overhead")
-                    logging.info("[polaris] Applied torch.compile to diffusion model (reduce-overhead).")
+                    self.diffusion_model = torch.compile(self.diffusion_model, mode="default")
+                    logging.info("[polaris] Applied torch.compile to diffusion model (default mode).")
                 except Exception as e:
                     logging.warning(f"[polaris] torch.compile failed: {e}")
             logging.info("model weight dtype {}, manual cast: {}".format(self.get_dtype(), self.manual_cast_dtype))

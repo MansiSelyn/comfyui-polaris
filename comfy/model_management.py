@@ -733,6 +733,11 @@ try:
 except:
     pass
 
+if _POLARIS_ACTIVE:
+    torch.backends.cuda.matmul.allow_fp16_accumulation = True
+    PRIORITIZE_FP16 = True
+    logging.info("[polaris] Auto-enabled fp16 accumulation (2:1 packed FP16 on GCN4).")
+
 
 def set_cudnn_benchmark():
     if torch.cuda.is_available() and torch.backends.cudnn.is_available():
@@ -1045,6 +1050,8 @@ if WINDOWS:
     EXTRA_RESERVED_VRAM = 600 * 1024 * 1024 #Windows is higher because of the shared vram issue
     if total_vram > (15 * 1024):  # more extra reserved vram on 16GB+ cards
         EXTRA_RESERVED_VRAM += 100 * 1024 * 1024
+if _POLARIS_ACTIVE:
+    EXTRA_RESERVED_VRAM = 400 * 1024 * 1024
 
 if args.reserve_vram is not None:
     EXTRA_RESERVED_VRAM = args.reserve_vram * 1024 * 1024 * 1024
@@ -1054,6 +1061,8 @@ def extra_reserved_memory():
     return EXTRA_RESERVED_VRAM
 
 def minimum_inference_memory():
+    if _POLARIS_ACTIVE:
+        return (1024 * 1024 * 1024) * 0.5 + extra_reserved_memory()
     return (1024 * 1024 * 1024) * 0.8 + extra_reserved_memory()
 
 def free_memory(memory_required, device, keep_loaded=[], for_dynamic=False, pins_required=0, ram_required=0):
@@ -1528,8 +1537,8 @@ def device_supports_non_blocking(device):
 def force_channels_last():
     if args.force_channels_last:
         return True
-
-    #TODO
+    if _POLARIS_ACTIVE:
+        return True
     return False
 
 
@@ -1869,12 +1878,16 @@ def unpin_memory(tensor):
     return False
 
 def sage_attention_enabled():
+    if _POLARIS_ACTIVE:
+        return False
     return args.use_sage_attention
 
 def comfy_kitchen_attention_enabled():
     return args.use_ck_attention
 
 def flash_attention_enabled():
+    if _POLARIS_ACTIVE:
+        return False
     return args.use_flash_attention
 
 def xformers_enabled():
@@ -2153,6 +2166,8 @@ def should_use_bf16(device=None, model_params=0, prioritize_performance=True, ma
     return False
 
 def supports_fp8_compute(device=None):
+    if _POLARIS_ACTIVE:
+        return False
     if SUPPORT_FP8_OPS:
         return True
 
@@ -2177,6 +2192,8 @@ def supports_fp8_compute(device=None):
     return True
 
 def supports_nvfp4_compute(device=None):
+    if _POLARIS_ACTIVE:
+        return False
     if not is_nvidia():
         return False
 
@@ -2187,6 +2204,8 @@ def supports_nvfp4_compute(device=None):
     return True
 
 def supports_mxfp8_compute(device=None):
+    if _POLARIS_ACTIVE:
+        return False
     if not is_nvidia():
         return False
 
