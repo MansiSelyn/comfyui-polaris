@@ -1059,6 +1059,15 @@ class VAE:
         self.vae_dtype = dtype
         self.first_stage_model.to(self.vae_dtype)
         model_management.archive_model_dtypes(self.first_stage_model)
+        if model_management.force_channels_last():
+            self.first_stage_model.to(memory_format=torch.channels_last)
+            logging.debug("[polaris] VAE using channels_last memory format")
+        if getattr(model_management, '_POLARIS_ACTIVE', False):
+            try:
+                self.first_stage_model = torch.compile(self.first_stage_model, mode="default")
+                logging.info("[polaris] Applied torch.compile to VAE.")
+            except Exception as e:
+                logging.warning(f"[polaris] VAE torch.compile failed: {e}")
         self.output_device = model_management.intermediate_device()
 
         mp = comfy.model_patcher.CoreModelPatcher
