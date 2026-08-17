@@ -432,7 +432,22 @@ def cast_bias_weight(s, input=None, dtype=None, device=None, bias_dtype=None, of
     weight_has_function = len(s.weight_function) > 0
     bias_has_function = len(s.bias_function) > 0
 
-    weight = comfy.model_management.cast_to(s.weight, None, device, non_blocking=non_blocking, copy=weight_has_function, stream=offload_stream, r=weight)
+    _polaris_fp8 = (
+        getattr(comfy.model_management, '_POLARIS_ACTIVE', False)
+        and not weight_has_function
+        and hasattr(s, 'weight')
+        and s.weight.dtype in comfy.model_management.FLOAT8_TYPES
+        and dtype is not None
+        and dtype in (torch.float16, torch.bfloat16)
+    )
+    if _polaris_fp8:
+        if isinstance(s.weight, QuantizedTensor):
+            weight = s.weight.dequantize().to(dtype=dtype)
+        else:
+            weight = s.weight.to(dtype=dtype)
+        weight = weight.to(device=device, non_blocking=non_blocking)
+    else:
+        weight = comfy.model_management.cast_to(s.weight, None, device, non_blocking=non_blocking, copy=weight_has_function, stream=offload_stream, r=weight)
 
     if s.bias is not None:
         bias = comfy.model_management.cast_to(s.bias, None, device, non_blocking=non_blocking, copy=bias_has_function, stream=offload_stream, r=bias)
@@ -447,7 +462,7 @@ def cast_bias_weight(s, input=None, dtype=None, device=None, bias_dtype=None, of
         for f in s.bias_function:
             bias = f(bias)
 
-    if weight_has_function or weight.dtype != dtype:
+    if not _polaris_fp8 and (weight_has_function or weight.dtype != dtype):
         weight = weight.to(dtype=dtype)
         if isinstance(weight, QuantizedTensor):
             weight = weight.dequantize()

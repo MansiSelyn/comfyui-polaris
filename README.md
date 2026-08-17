@@ -28,10 +28,34 @@
 - FP8 compute blocked (no FP8 tensor cores on Polaris)
 - NVFP4 compute blocked (no FP4 tensor cores)
 - MXFP8 compute blocked (no MXFP8 tensor cores)
-- Flash Attention blocked (requires Ampere+)
-- Sage Attention blocked (CUDA-only kernels)
 - Triton INT8 blocked (requires WMMA, hangs gfx803)
 - bf16 disabled (no bf16 hardware on GCN4)
+
+### Attention shims
+Routes NVIDIA-only attention libraries to PyTorch's built-in SDPA (MATH backend):
+
+| Shim | What it replaces | Routes to |
+|------|-----------------|-----------|
+| `xformers/` | `xformers.ops.memory_efficient_attention` | `F.scaled_dot_product_attention` |
+| `sageattention/` | `sageattn()` | `F.scaled_dot_product_attention` |
+| `sageattn3/` | `sageattn3_blackwell()` | Clear error (Blackwell-only) |
+| `flash_attn/` | `flash_attn_func()` | `F.scaled_dot_product_attention` |
+
+All produce correct results. No efficiency gains (MATH materializes full N×N attention matrix), but no crashes either. Gradient flow works. If real packages are installed in the venv, they take priority over local shims.
+
+### DynamicVRAM shim
+Pure-Python reimplementation of `comfy_aimdo` for PyTorch < 2.8:
+
+| Module | What it replaces | Implementation |
+|--------|-----------------|---------------|
+| `comfy_aimdo/control.py` | C++ init/device mgmt | No-ops + returns `True` |
+| `comfy_aimdo/model_vbar.py` | CUDA virtual memory (VBAR) | `torch.cuda` allocation + Python tracking |
+| `comfy_aimdo/host_buffer.py` | Custom pinned memory | `torch.pin_memory()` + ctypes DMA |
+| `comfy_aimdo/vram_buffer.py` | GPU staging buffers | `torch.cuda` allocation |
+| `comfy_aimdo/torch.py` | Tensor conversion | `.to(device=...)` |
+| `comfy_aimdo/model_mmap.py` | CUDA mmap loading | Python `mmap.mmap` |
+
+Enables DynamicVRAM code paths on PyTorch 2.4.1. Slower than the C++ version (no demand-paging, no zero-copy DMA) but functionally equivalent.
 
 ### Quantization
 - Weight-only INT4 quantization (group-128 symmetric, dequant to FP16)
@@ -70,10 +94,12 @@ Verified on 8GB RX 570 under ZLUDA:
 - INT4 weight quantization
 - FP8 model loading (emulated)
 - Multi-installation model sharing
+- xformers / SageAttention / Flash Attention imports (via SDPA MATH shim)
+- DynamicVRAM code paths (via pure-Python aimdo shim)
 
 ## What doesn't work
 
 - Native FP8/FP4/MXFP8 compute (hardware limitation)
-- Flash Attention / xformers / Sage Attention (NVIDIA-only)
+- Efficient attention kernels (MATH backend only)
 - Triton INT8 kernels (hangs gfx803)
-- Triton INT8 (no WMMA/MFMA on GCN4)
+- Native CUDA virtual memory management (aimdo shim uses plain torch.cuda)
